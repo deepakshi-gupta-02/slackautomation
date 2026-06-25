@@ -44,6 +44,8 @@ except ImportError:
 # --------------------------------------------------------------------------- #
 #  Follow-up message templates -- one per round. Edit these to your voice.
 #  {name} is filled in with the person's first name.
+#  NOTE: If a "Message" column exists in the employee sheet, it will be used
+#  instead of these templates.
 # --------------------------------------------------------------------------- #
 MESSAGE_ROUNDS = [
     # Round 1 -- gentle
@@ -122,6 +124,7 @@ def load_people(args) -> list[dict]:
     name_col = find_col(df, args.emp_name_col, ["name"])
     email_col = find_col(df, args.emp_email_col, ["email", "e-mail", "mail"])
     slack_col = find_col(df, args.emp_slack_col, ["slack", "user id", "userid"])
+    message_col = find_col(df, "", ["message", "msg"])  # Optional message column
 
     if not (email_col or slack_col):
         sys.exit("ERROR: employee file needs an email column or a slack-id "
@@ -132,11 +135,17 @@ def load_people(args) -> list[dict]:
         name = str(row[name_col]).strip() if name_col else ""
         email = norm_email(row[email_col]) if email_col else ""
         slack_id = str(row[slack_col]).strip() if slack_col else ""
+        custom_msg = str(row[message_col]).strip() if message_col and pd.notna(row[message_col]) else ""
         if not (name or email or slack_id):
             continue
-        people.append({"name": name, "email": email, "slack_id": slack_id})
+        people.append({
+            "name": name,
+            "email": email,
+            "slack_id": slack_id,
+            "message": custom_msg
+        })
     log(f"Loaded {len(people)} people from '{args.employees}' "
-        f"(name='{name_col}', email='{email_col}', slack='{slack_col}')")
+        f"(name='{name_col}', email='{email_col}', slack='{slack_col}', message='{message_col}')")
     return people
 
 
@@ -329,8 +338,13 @@ def main():
             unreachable += 1
             continue
 
-        round_idx = min(rec["rounds"], len(MESSAGE_ROUNDS) - 1)
-        text = MESSAGE_ROUNDS[round_idx].format(name=first_name(p["name"]))
+        # Use custom message if available, otherwise use round-based template
+        if p.get("message"):
+            text = p["message"].format(name=first_name(p["name"]))
+        else:
+            round_idx = min(rec["rounds"], len(MESSAGE_ROUNDS) - 1)
+            text = MESSAGE_ROUNDS[round_idx].format(name=first_name(p["name"]))
+        
         if slack.dm(uid, text):
             rec["rounds"] += 1
             rec["last_contacted"] = now.isoformat()
