@@ -7,6 +7,18 @@ on:
     - cron: "30 4 * * *"   # 04:30 UTC = 10:00 AM IST
   workflow_dispatch:
     inputs:
+      employees_url:
+        description: "Employee list URL (Google Sheet CSV)"
+        required: true
+        default: ""
+      responses_url:
+        description: "Form responses URL (Google Sheet CSV)"
+        required: true
+        default: ""
+      custom_message:
+        description: "Custom message to send (use {name} for first name)"
+        required: false
+        default: "Hi {name}! Quick nudge -- we're still waiting on your response for the form. Whenever you get a sec, would you mind filling it in? Thanks a lot!"
       send:
         description: "Actually send messages? Leave unticked to preview only."
         type: boolean
@@ -36,9 +48,22 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_OWNER_ID: ${{ secrets.SLACK_OWNER_ID }}
         run: |
+          # Use workflow inputs if provided, otherwise fall back to secrets
+          EMPLOYEES_URL="${{ inputs.employees_url }}"
+          RESPONSES_URL="${{ inputs.responses_url }}"
+          CUSTOM_MESSAGE="${{ inputs.custom_message }}"
+          
+          # For scheduled runs, use secrets
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            EMPLOYEES_URL="${{ secrets.EMPLOYEES_CSV_URL }}"
+            RESPONSES_URL="${{ secrets.SHEET_CSV_URL }}"
+            CUSTOM_MESSAGE=""
+          fi
+          
           python followup_bot.py \
-            --employees "${{ secrets.EMPLOYEES_CSV_URL }}" \
-            --responses "${{ secrets.SHEET_CSV_URL }}" \
+            --employees "$EMPLOYEES_URL" \
+            --responses "$RESPONSES_URL" \
+            ${CUSTOM_MESSAGE:+--custom-message "$CUSTOM_MESSAGE"} \
             ${{ (github.event_name == 'schedule' || inputs.send) && '--send' || '' }} \
             ${{ inputs.force && '--force' || '' }}
 

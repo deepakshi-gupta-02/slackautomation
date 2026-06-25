@@ -291,6 +291,8 @@ def main():
     ap.add_argument("--emp-email-col", default="")
     ap.add_argument("--emp-slack-col", default="")
     ap.add_argument("--emp-message-col", default="", help="custom message column")
+    ap.add_argument("--custom-message", default="", 
+                    help="override message for all employees (use {name} for first name)")
     ap.add_argument("--resp-email-col", default="")
     ap.add_argument("--resp-name-col", default="")
     args = ap.parse_args()
@@ -350,7 +352,9 @@ def main():
             continue
 
         # Use custom message if available, otherwise use round-based template
-        if p.get("message"):
+        if args.custom_message:
+            text = args.custom_message.format(name=first_name(p["name"]))
+        elif p.get("message"):
             text = p["message"].format(name=first_name(p["name"]))
         else:
             round_idx = min(rec["rounds"], len(MESSAGE_ROUNDS) - 1)
