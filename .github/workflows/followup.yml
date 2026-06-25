@@ -1,0 +1,45 @@
+name: Follow-up bot
+
+on:
+  schedule:
+    - cron: "30 4 * * *"   # 04:30 UTC = 10:00 AM IST
+  workflow_dispatch:
+    inputs:
+      send:
+        description: "Actually send messages? Leave unticked to preview only."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run follow-up bot
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_OWNER_ID: ${{ secrets.SLACK_OWNER_ID }}
+        run: |
+          python followup_bot.py \
+            --employees employees.csv \
+            --responses "${{ secrets.SHEET_CSV_URL }}" \
+            ${{ (github.event_name == 'schedule' || inputs.send) && '--send' || '' }}
+
+      - name: Remember who has been nudged
+        if: github.event_name == 'schedule' || inputs.send
+        run: |
+          git config user.name "followup-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add followup_state.json || true
+          git commit -m "Update follow-up state" || echo "no changes to save"
+          git push || echo "nothing to push"
