@@ -1,0 +1,391 @@
+name: Launch Web UI
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_duration:
+        description: 'Session duration in minutes'
+        required: false
+        default: '60'
+        type: choice
+        options:
+          - '30'
+          - '60'
+          - '120'
+          - '180'
+
+jobs:
+  launch-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # Max 6 hours
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install streamlit pyngrok
+      
+      - name: Create Streamlit app
+        run: |
+          cat > streamlit_app.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          Slack Follow-Up Bot - Web UI
+          ==============================
+          
+          A beautiful web interface for sending follow-up messages to employees who 
+          haven't filled out forms. Upload CSVs, preview matches, and send messages!
+          """
+          
+          import streamlit as st
+          import pandas as pd
+          import os
+          from datetime import datetime
+          from followup_bot import (
+              norm_email, norm_name, first_name, find_col, load_state, save_state,
+              person_key, is_due, has_responded, Slack, MESSAGE_ROUNDS
+          )
+          
+          # Page config
+          st.set_page_config(
+              page_title="Slack Follow-Up Bot",
+              page_icon="💬",
+              layout="wide",
+              initial_sidebar_state="expanded"
+          )
+          
+          # Custom CSS
+          st.markdown("""
+          <style>
+              .main-header {
+                  font-size: 3rem;
+                  font-weight: bold;
+                  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+                  -webkit-background-clip: text;
+                  -webkit-text-fill-color: transparent;
+                  text-align: center;
+                  margin-bottom: 0.5rem;
+              }
+              .sub-header {
+                  text-align: center;
+                  color: #666;
+                  font-size: 1.2rem;
+                  margin-bottom: 2rem;
+              }
+              .stats-box {
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  padding: 1.5rem;
+                  border-radius: 10px;
+                  text-align: center;
+                  margin: 0.5rem;
+              }
+              .stats-number {
+                  font-size: 2.5rem;
+                  font-weight: bold;
+              }
+              .stats-label {
+                  font-size: 1rem;
+                  opacity: 0.9;
+              }
+          </style>
+          """, unsafe_allow_html=True)
+          
+          # Header
+          st.markdown('<div class="main-header">💬 Slack Follow-Up Bot</div>', unsafe_allow_html=True)
+          st.markdown('<div class="sub-header">Automated follow-ups for form responses made easy</div>', unsafe_allow_html=True)
+          
+          # Sidebar for settings
+          with st.sidebar:
+              st.header("⚙️ Settings")
+              
+              # Load from env or secrets
+              default_token = os.environ.get("SLACK_BOT_TOKEN", "")
+              default_owner = os.environ.get("SLACK_OWNER_ID", "")
+              
+              slack_token = st.text_input(
+                  "Slack Bot/User Token",
+                  type="password",
+                  help="Your Slack token (starts with xoxb- or xoxp-)",
+                  value=default_token
+              )
+              
+              owner_id = st.text_input(
+                  "Your Slack User ID (optional)",
+                  help="You'll get a summary message when everyone responds",
+                  value=default_owner
+              )
+              
+              st.divider()
+              
+              with st.expander("🔧 Advanced Settings"):
+                  max_rounds = st.number_input("Max nudges per person", min_value=1, max_value=10, value=3)
+                  min_hours = st.number_input("Min hours between nudges", min_value=1, max_value=168, value=24)
+                  force_mode = st.checkbox("Force mode (ignore response status)", value=False)
+          
+          # Main content
+          col1, col2 = st.columns(2)
+          
+          with col1:
+              st.markdown("### 📋 Employee List")
+              emp_url = st.text_input(
+                  "Google Sheet URL (CSV format)",
+                  placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv",
+                  key="emp_url"
+              )
+              emp_df = None
+              if emp_url and st.button("Load Employees", key="load_emp"):
+                  try:
+                      emp_df = pd.read_csv(emp_url, on_bad_lines='skip')
+                      st.success(f"✅ Loaded {len(emp_df)} employees")
+                      st.session_state['emp_df'] = emp_df
+                      with st.expander("Preview data"):
+                          st.dataframe(emp_df.head(), use_container_width=True)
+                  except Exception as e:
+                      st.error(f"❌ Error loading URL: {e}")
+              elif 'emp_df' in st.session_state:
+                  emp_df = st.session_state['emp_df']
+                  st.success(f"✅ Loaded {len(emp_df)} employees")
+          
+          with col2:
+              st.markdown("### 📊 Form Responses")
+              resp_url = st.text_input(
+                  "Google Sheet URL (CSV format)",
+                  placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv",
+                  key="resp_url"
+              )
+              resp_df = None
+              if resp_url and st.button("Load Responses", key="load_resp"):
+                  try:
+                      resp_df = pd.read_csv(resp_url, on_bad_lines='skip')
+                      st.success(f"✅ Loaded {len(resp_df)} responses")
+                      st.session_state['resp_df'] = resp_df
+                      with st.expander("Preview data"):
+                          st.dataframe(resp_df.head(), use_container_width=True)
+                  except Exception as e:
+                      st.error(f"❌ Error loading URL: {e}")
+              elif 'resp_df' in st.session_state:
+                  resp_df = st.session_state['resp_df']
+                  st.success(f"✅ Loaded {len(resp_df)} responses")
+          
+          # Process and preview
+          if 'emp_df' in st.session_state and 'resp_df' in st.session_state:
+              st.divider()
+              st.markdown("### 🔍 Preview & Analysis")
+              
+              try:
+                  emp_df = st.session_state['emp_df']
+                  resp_df = st.session_state['resp_df']
+                  
+                  # Find columns
+                  emp_name_col = find_col(emp_df, "", ["name"])
+                  emp_email_col = find_col(emp_df, "", ["email", "e-mail", "mail"])
+                  emp_message_col = find_col(emp_df, "", ["message", "msg", "text", "note"])
+                  
+                  resp_email_col = find_col(resp_df, "", ["email", "e-mail", "mail"])
+                  resp_name_col = find_col(resp_df, "", ["name"])
+                  
+                  # Build people list
+                  people = []
+                  for _, row in emp_df.iterrows():
+                      name = str(row[emp_name_col]).strip() if emp_name_col else ""
+                      email = norm_email(row[emp_email_col]) if emp_email_col else ""
+                      custom_msg = str(row[emp_message_col]).strip() if emp_message_col and pd.notna(row[emp_message_col]) else ""
+                      if name or email:
+                          people.append({"name": name, "email": email, "slack_id": "", "message": custom_msg})
+                  
+                  # Build responders
+                  resp_emails, resp_names = set(), set()
+                  for _, row in resp_df.iterrows():
+                      if resp_email_col:
+                          e = norm_email(row[resp_email_col])
+                          if e:
+                              resp_emails.add(e)
+                      if resp_name_col:
+                          n = norm_name(row[resp_name_col])
+                          if n:
+                              resp_names.add(n)
+                  
+                  # Find pending
+                  if force_mode:
+                      pending = people
+                  else:
+                      pending = [p for p in people if not has_responded(p, resp_emails, resp_names)]
+                  
+                  responded = len(people) - len(pending)
+                  
+                  # Display stats
+                  col1, col2, col3 = st.columns(3)
+                  with col1:
+                      st.markdown(f"""
+                      <div class="stats-box">
+                          <div class="stats-number">{len(people)}</div>
+                          <div class="stats-label">Total Employees</div>
+                      </div>
+                      """, unsafe_allow_html=True)
+                  with col2:
+                      st.markdown(f"""
+                      <div class="stats-box">
+                          <div class="stats-number">{responded}</div>
+                          <div class="stats-label">Already Responded</div>
+                      </div>
+                      """, unsafe_allow_html=True)
+                  with col3:
+                      st.markdown(f"""
+                      <div class="stats-box">
+                          <div class="stats-number">{len(pending)}</div>
+                          <div class="stats-label">Pending Follow-ups</div>
+                      </div>
+                      """, unsafe_allow_html=True)
+                  
+                  # Show pending people
+                  if pending:
+                      st.markdown("### 📨 People who will receive messages:")
+                      pending_df = pd.DataFrame([
+                          {"Name": p["name"], "Email": p["email"]}
+                          for p in pending
+                      ])
+                      st.dataframe(pending_df, use_container_width=True)
+                  else:
+                      st.success("🎉 Everyone has responded! No follow-ups needed.")
+                  
+                  # Message customization
+                  st.divider()
+                  st.markdown("### ✉️ Customize Message")
+                  
+                  custom_message = st.text_area(
+                      "Message template",
+                      value="Hi {name}! Quick nudge - we are still waiting on your response for the form - https://forms.gle/zn8kYnC7Cwu6VjB89",
+                      help="Use {name} for the person's first name",
+                      height=100
+                  )
+                  
+                  # Send button
+                  if len(pending) > 0:
+                      st.divider()
+                      col1, col2, col3 = st.columns([1, 2, 1])
+                      with col2:
+                          send_button = st.button(
+                              f"🚀 Send Messages to {len(pending)} People",
+                              type="primary",
+                              use_container_width=True
+                          )
+                          
+                          if send_button:
+                              if not slack_token:
+                                  st.error("❌ Please enter your Slack token in the sidebar!")
+                              else:
+                                  progress_bar = st.progress(0)
+                                  status_text = st.empty()
+                                  
+                                  slack = Slack(slack_token, True)
+                                  state = load_state("followup_state.json")
+                                  now = datetime.now()
+                                  
+                                  nudged = 0
+                                  skipped = 0
+                                  unreachable = 0
+                                  
+                                  for i, p in enumerate(pending):
+                                      key = person_key(p)
+                                      rec = state["people"].setdefault(key, {"rounds": 0, "last_contacted": None, "name": p["name"]})
+                                      
+                                      if not is_due(rec, min_hours, max_rounds, now) and not force_mode:
+                                          skipped += 1
+                                          continue
+                                      
+                                      uid = slack.resolve(p)
+                                      if not uid:
+                                          unreachable += 1
+                                          continue
+                                      
+                                      text = custom_message.format(name=first_name(p["name"]))
+                                      
+                                      if slack.dm(uid, text):
+                                          rec["rounds"] += 1
+                                          rec["last_contacted"] = now.isoformat()
+                                          nudged += 1
+                                          status_text.text(f"✅ Sent to {p['name']}")
+                                      
+                                      progress_bar.progress((i + 1) / len(pending))
+                                  
+                                  save_state("followup_state.json", state)
+                                  
+                                  st.success(f"""
+                                  ### ✅ Complete!
+                                  - **{nudged}** messages sent
+                                  - **{skipped}** skipped (too recent)
+                                  - **{unreachable}** unreachable
+                                  """)
+              
+              except Exception as e:
+                  st.error(f"❌ Error processing data: {e}")
+                  st.exception(e)
+          
+          else:
+              st.info("👆 Enter both Google Sheet URLs and click Load buttons to get started!")
+          
+          # Footer
+          st.divider()
+          st.markdown("""
+          <div style='text-align: center; color: #666; padding: 2rem;'>
+              Made with ❤️ by Kiro AI | Session running on GitHub Actions
+          </div>
+          """, unsafe_allow_html=True)
+          EOF
+      
+      - name: Start Streamlit with Cloudflare Tunnel
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_OWNER_ID: ${{ secrets.SLACK_OWNER_ID }}
+        run: |
+          # Install cloudflared
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+          
+          # Start streamlit in background
+          streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0 &
+          
+          # Wait for streamlit to start
+          sleep 10
+          
+          echo "🚀 Starting Cloudflare Tunnel..."
+          echo "⏰ Session will run for ${{ github.event.inputs.session_duration }} minutes"
+          echo ""
+          
+          # Start cloudflare tunnel and capture URL
+          cloudflared tunnel --url http://localhost:8501 > tunnel.log 2>&1 &
+          
+          # Wait for tunnel to start and get URL
+          sleep 5
+          TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -1)
+          
+          echo "════════════════════════════════════════════════════════════"
+          echo "✅ YOUR WEB UI IS READY!"
+          echo "════════════════════════════════════════════════════════════"
+          echo ""
+          echo "🌐 Access your Streamlit UI at:"
+          echo "   $TUNNEL_URL"
+          echo ""
+          echo "⏰ This session will stay active for ${{ github.event.inputs.session_duration }} minutes"
+          echo ""
+          echo "📝 To use:"
+          echo "   1. Open the URL above in your browser"
+          echo "   2. Enter your Google Sheet URLs"
+          echo "   3. Preview and send messages!"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
+          
+          # Keep session alive for specified duration
+          DURATION_SECONDS=$(($${{ github.event.inputs.session_duration }} * 60))
+          sleep $DURATION_SECONDS
+          
+          echo "⏰ Session time expired. Shutting down..."
