@@ -276,6 +276,8 @@ def main():
     ap.add_argument("--state", default="followup_state.json", help="state file path")
     ap.add_argument("--send", action="store_true",
                     help="actually send DMs (default is dry-run / preview only)")
+    ap.add_argument("--force", action="store_true",
+                    help="send messages even to people who have already responded (for testing)")
     ap.add_argument("--token", default=os.environ.get("SLACK_BOT_TOKEN"),
                     help="Slack bot token (or set SLACK_BOT_TOKEN)")
     ap.add_argument("--owner", default=os.environ.get("SLACK_OWNER_ID"),
@@ -301,7 +303,12 @@ def main():
     state = load_state(args.state)
     slack = Slack(args.token, args.send)
 
-    pending = [p for p in people if not has_responded(p, resp_emails, resp_names)]
+    if args.force:
+        log("FORCE MODE: Will send to everyone, ignoring response status")
+        pending = people
+    else:
+        pending = [p for p in people if not has_responded(p, resp_emails, resp_names)]
+    
     responded = len(people) - len(pending)
     log(f"Status: {responded}/{len(people)} responded, {len(pending)} still pending.")
 

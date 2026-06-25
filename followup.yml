@@ -11,6 +11,10 @@ on:
         description: "Actually send messages? Leave unticked to preview only."
         type: boolean
         default: false
+      force:
+        description: "Force send to everyone (ignore response status, for testing)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # lets the bot remember who it has already nudged
@@ -35,7 +39,8 @@ jobs:
           python followup_bot.py \
             --employees employees.csv \
             --responses "${{ secrets.SHEET_CSV_URL }}" \
-            ${{ (github.event_name == 'schedule' || inputs.send) && '--send' || '' }}
+            ${{ (github.event_name == 'schedule' || inputs.send) && '--send' || '' }} \
+            ${{ inputs.force && '--force' || '' }}
 
       - name: Remember who has been nudged
         if: github.event_name == 'schedule' || inputs.send
