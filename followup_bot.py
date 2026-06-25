@@ -29,6 +29,7 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -103,7 +104,7 @@ def read_table(path: str) -> pd.DataFrame:
     return pd.read_csv(p)
 
 
-def find_col(df: pd.DataFrame, override: str, keywords: list[str]) -> str | None:
+def find_col(df: pd.DataFrame, override: str, keywords: list[str]) -> Optional[str]:
     """Pick a column: explicit override wins, else first name containing a keyword."""
     if override:
         if override not in df.columns:
@@ -231,7 +232,7 @@ class Slack:
                          "(SLACK_BOT_TOKEN env var or --token).")
             self.client = WebClient(token=token)
 
-    def resolve(self, person: dict) -> str | None:
+    def resolve(self, person: dict) -> Optional[str]:
         """Get a Slack user ID for a person."""
         if person.get("slack_id"):
             return person["slack_id"]
