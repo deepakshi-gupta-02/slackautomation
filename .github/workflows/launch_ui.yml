@@ -385,7 +385,7 @@ jobs:
           echo "════════════════════════════════════════════════════════════"
           
           # Keep session alive for specified duration
-          DURATION_SECONDS=$(($${{ github.event.inputs.session_duration }} * 60))
+          DURATION_SECONDS=$((${{ github.event.inputs.session_duration }} * 60))
           sleep $DURATION_SECONDS
           
           echo "⏰ Session time expired. Shutting down..."
