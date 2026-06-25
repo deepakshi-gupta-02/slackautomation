@@ -33,10 +33,10 @@ wheels/
 # Bot state file (contains tracking data)
 followup_state.json
 
-# CSV files with actual employee data
-employees.csv
+# CSV files with actual data (exclude specific files, keep templates)
 responses.csv
 *.xlsx
+# Note: employees.csv is tracked because the workflow needs it
 
 # IDE
 .vscode/
