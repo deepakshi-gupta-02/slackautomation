@@ -88,7 +88,7 @@ def read_table(path: str) -> pd.DataFrame:
     """
     if str(path).startswith(("http://", "https://")):
         try:
-            return pd.read_csv(path)
+            return pd.read_csv(path, on_bad_lines='skip')
         except Exception as e:
             sys.exit(f"ERROR: couldn't read the responses URL.\n  {e}\n"
                      "Check the Google Sheet is published to the web as CSV and "
