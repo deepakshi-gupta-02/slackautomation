@@ -112,6 +112,7 @@ def find_col(df: pd.DataFrame, override: str, keywords: list[str]) -> str | None
     for col in df.columns:
         low = str(col).strip().lower()
         if any(k in low for k in keywords):
+            log(f"  Auto-detected column '{col}' for keywords {keywords}")
             return col
     return None
 
@@ -121,10 +122,11 @@ def find_col(df: pd.DataFrame, override: str, keywords: list[str]) -> str | None
 # --------------------------------------------------------------------------- #
 def load_people(args) -> list[dict]:
     df = read_table(args.employees)
+    log(f"  Available columns: {list(df.columns)}")
     name_col = find_col(df, args.emp_name_col, ["name"])
     email_col = find_col(df, args.emp_email_col, ["email", "e-mail", "mail"])
     slack_col = find_col(df, args.emp_slack_col, ["slack", "user id", "userid"])
-    message_col = find_col(df, "", ["message", "msg"])  # Optional message column
+    message_col = find_col(df, args.emp_message_col, ["message", "msg", "text", "note"])  # Optional message column
 
     if not (email_col or slack_col):
         sys.exit("ERROR: employee file needs an email column or a slack-id "
@@ -285,6 +287,7 @@ def main():
     ap.add_argument("--emp-name-col", default="")
     ap.add_argument("--emp-email-col", default="")
     ap.add_argument("--emp-slack-col", default="")
+    ap.add_argument("--emp-message-col", default="", help="custom message column")
     ap.add_argument("--resp-email-col", default="")
     ap.add_argument("--resp-name-col", default="")
     args = ap.parse_args()
