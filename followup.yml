@@ -33,7 +33,7 @@ jobs:
           SLACK_OWNER_ID: ${{ secrets.SLACK_OWNER_ID }}
         run: |
           python followup_bot.py \
-            --employees "${{ secrets.EMPLOYEES_CSV_URL }}" \
+            --employees employees.csv \
             --responses "${{ secrets.SHEET_CSV_URL }}" \
             ${{ (github.event_name == 'schedule' || inputs.send) && '--send' || '' }}
 
