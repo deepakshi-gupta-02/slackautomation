@@ -247,6 +247,7 @@ class Slack:
             log(f"  [dry-run] would DM {user_id}: {text}")
             return True
         try:
+            # Send as user (not bot) by using user token and not setting as_user
             self.client.chat_postMessage(channel=user_id, text=text)
             return True
         except SlackApiError as e:
