@@ -220,7 +220,7 @@ def is_due(record: dict, min_hours: float, max_rounds: int, now: datetime) -> bo
 #  Slack
 # --------------------------------------------------------------------------- #
 class Slack:
-    def __init__(self, token: str | None, send: bool):
+    def __init__(self, token: Optional[str], send: bool):
         self.send = send
         self.client = None
         self._email_cache = {}
