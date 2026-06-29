@@ -8,23 +8,23 @@ on:
   workflow_dispatch:
     inputs:
       employees_url:
-        description: "Employee list URL (Google Sheet CSV)"
+        description: "1️⃣ Employee list URL (Google Sheet published as CSV)"
         required: true
         default: ""
       responses_url:
-        description: "Form responses URL (Google Sheet CSV)"
+        description: "2️⃣ Form responses URL (Google Sheet published as CSV)"
         required: true
         default: ""
       custom_message:
-        description: "Custom message to send (use {name} for first name)"
+        description: "3️⃣ Custom message (optional - use {name} for first name)"
         required: false
         default: "Hi {name}! Quick nudge -- we're still waiting on your response for the form. Whenever you get a sec, would you mind filling it in? Thanks a lot!"
       send:
-        description: "Actually send messages? Leave unticked to preview only."
+        description: "4️⃣ ✅ CHECK THIS to actually send messages | ❌ Leave UNCHECKED for preview only (dry-run)"
         type: boolean
         default: false
       force:
-        description: "Force send to everyone (ignore response status, for testing)"
+        description: "5️⃣ ⚠️ TESTING ONLY - Sends to EVERYONE including those who already responded | ❌ Keep UNCHECKED for normal use"
         type: boolean
         default: false
 
