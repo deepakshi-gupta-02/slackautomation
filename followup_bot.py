@@ -279,7 +279,8 @@ def load_responders(args) -> tuple[set, set]:
     if emails:
         log(f"  Sample responder emails: {list(emails)[:5]}")
     if names:
-        log(f"  Sample responder names: {list(names)[:5]}")
+        log(f"  Sample responder names (first 10): {sorted(list(names))[:10]}")
+        log(f"  Total unique responder names: {len(names)}")
     
     return emails, names
 
