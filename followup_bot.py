@@ -281,6 +281,12 @@ def load_responders(args) -> tuple[set, set]:
     if names:
         log(f"  Sample responder names (first 10): {sorted(list(names))[:10]}")
         log(f"  Total unique responder names: {len(names)}")
+        # Check for Dhanpat specifically
+        dhanpat_matches = [n for n in names if 'dhanpat' in n]
+        if dhanpat_matches:
+            log(f"  ⚠️  Found Dhanpat in responses: {dhanpat_matches}")
+        else:
+            log(f"  ⚠️  'dhanpat' NOT found in any responder names!")
     
     return emails, names
 
