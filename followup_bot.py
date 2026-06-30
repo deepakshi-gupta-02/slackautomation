@@ -78,6 +78,47 @@ def norm_name(value) -> str:
     return s
 
 
+def name_similarity(name1: str, name2: str) -> float:
+    """Calculate similarity between two names (0.0 to 1.0).
+    
+    Handles cases like:
+    - "Dhanpat Singh Meena" vs "Dhanpat Meena" (missing middle name)
+    - "John Smith" vs "John R Smith" (added middle initial)
+    - "Mary Jane Watson" vs "Mary Watson" (dropped middle name)
+    """
+    n1_parts = norm_name(name1).split()
+    n2_parts = norm_name(name2).split()
+    
+    if not n1_parts or not n2_parts:
+        return 0.0
+    
+    # Exact match
+    if " ".join(n1_parts) == " ".join(n2_parts):
+        return 1.0
+    
+    # Check if first name and last name match (ignore middle names)
+    if len(n1_parts) >= 2 and len(n2_parts) >= 2:
+        if n1_parts[0] == n2_parts[0] and n1_parts[-1] == n2_parts[-1]:
+            return 0.9  # High confidence if first and last match
+    
+    # Check if first name matches and last name is contained
+    if n1_parts[0] == n2_parts[0]:
+        # Check if any last name parts match
+        n1_last = set(n1_parts[1:])
+        n2_last = set(n2_parts[1:])
+        if n1_last & n2_last:  # Intersection
+            return 0.8
+    
+    # Check if all parts of shorter name are in longer name
+    shorter = n1_parts if len(n1_parts) < len(n2_parts) else n2_parts
+    longer = n2_parts if len(n1_parts) < len(n2_parts) else n1_parts
+    
+    if all(part in longer for part in shorter):
+        return 0.85
+    
+    return 0.0
+
+
 def first_name(full_name: str) -> str:
     full_name = str(full_name).strip()
     return full_name.split()[0] if full_name else "there"
@@ -185,16 +226,27 @@ def load_responders(args) -> tuple[set, set]:
 
 
 def has_responded(person: dict, resp_emails: set, resp_names: set) -> bool:
-    # Check email match
+    # Check email match (most reliable)
     if person["email"] and person["email"] in resp_emails:
         log(f"  ✓ {person['name']} matched by email: {person['email']}")
         return True
-    # Check name match
-    if person["name"] and norm_name(person["name"]) in resp_names:
-        log(f"  ✓ {person['name']} matched by name: {norm_name(person['name'])}")
+    
+    # Check exact name match
+    person_norm = norm_name(person["name"])
+    if person["name"] and person_norm in resp_names:
+        log(f"  ✓ {person['name']} matched by exact name: {person_norm}")
         return True
+    
+    # Check fuzzy name match (handles missing middle names, etc.)
+    if person["name"]:
+        for resp_name in resp_names:
+            similarity = name_similarity(person["name"], resp_name)
+            if similarity >= 0.8:  # 80% confidence threshold
+                log(f"  ✓ {person['name']} matched by fuzzy name (similarity: {similarity:.0%}): '{person_norm}' ≈ '{resp_name}'")
+                return True
+    
     # No match
-    log(f"  ✗ {person['name']} NOT matched (email: {person['email']}, norm_name: {norm_name(person['name'])})")
+    log(f"  ✗ {person['name']} NOT matched (email: {person['email']}, norm_name: {person_norm})")
     return False
 
 
