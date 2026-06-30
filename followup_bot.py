@@ -78,11 +78,37 @@ def norm_name(value) -> str:
     return s
 
 
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """Calculate the minimum number of edits (insertions, deletions, substitutions) 
+    needed to transform s1 into s2."""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    
+    if len(s2) == 0:
+        return len(s1)
+    
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            # Cost of insertions, deletions, or substitutions
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
+
+
 def name_similarity(name1: str, name2: str) -> float:
     """Calculate similarity between two names (0.0 to 1.0).
     
     Handles cases like:
     - "Dhanpat Singh Meena" vs "Dhanpat Meena" (missing middle name)
+    - "Dhanpat Singh Meena" vs "Dhanpat" (only first name)
+    - "Dhanpat" vs "Danpat" (typo/spelling mistake)
+    - "Ragini" vs "Ragnim" (typo/spelling mistake)
     - "John Smith" vs "John R Smith" (added middle initial)
     - "Mary Jane Watson" vs "Mary Watson" (dropped middle name)
     """
@@ -96,17 +122,50 @@ def name_similarity(name1: str, name2: str) -> float:
     if " ".join(n1_parts) == " ".join(n2_parts):
         return 1.0
     
-    # Check if first name and last name match (ignore middle names)
-    if len(n1_parts) >= 2 and len(n2_parts) >= 2:
-        if n1_parts[0] == n2_parts[0] and n1_parts[-1] == n2_parts[-1]:
-            return 0.9  # High confidence if first and last match
+    # Check if first name matches (with typo tolerance)
+    if len(n1_parts) >= 1 and len(n2_parts) >= 1:
+        first1, first2 = n1_parts[0], n2_parts[0]
+        
+        # Calculate edit distance for first names
+        max_len = max(len(first1), len(first2))
+        edit_dist = levenshtein_distance(first1, first2)
+        first_name_sim = 1.0 - (edit_dist / max_len)
+        
+        # If first names are similar enough (allows 1-2 character differences)
+        if first_name_sim >= 0.7:  # e.g., "dhanpat" vs "danpat" = 85% similar
+            # Both have only first name
+            if len(n1_parts) == 1 or len(n2_parts) == 1:
+                return 0.6 + (first_name_sim * 0.1)  # 60-70% confidence
+            
+            # Check last name too
+            if len(n1_parts) >= 2 and len(n2_parts) >= 2:
+                last1, last2 = n1_parts[-1], n2_parts[-1]
+                max_len_last = max(len(last1), len(last2))
+                edit_dist_last = levenshtein_distance(last1, last2)
+                last_name_sim = 1.0 - (edit_dist_last / max_len_last)
+                
+                if last_name_sim >= 0.7:
+                    # Both first and last names match (with typo tolerance)
+                    combined_sim = (first_name_sim + last_name_sim) / 2
+                    return 0.75 + (combined_sim * 0.15)  # 75-90% confidence
+            
+            # First name similar, check if any other parts match
+            n1_rest = set(n1_parts[1:])
+            n2_rest = set(n2_parts[1:])
+            if n1_rest & n2_rest:
+                return 0.75
     
-    # Check if first name matches and last name is contained
+    # Exact first name match (original logic)
     if n1_parts[0] == n2_parts[0]:
-        # Check if any last name parts match
-        n1_last = set(n1_parts[1:])
-        n2_last = set(n2_parts[1:])
-        if n1_last & n2_last:  # Intersection
+        if len(n1_parts) == 1 or len(n2_parts) == 1:
+            return 0.7
+        
+        if n1_parts[-1] == n2_parts[-1]:
+            return 0.9
+        
+        n1_rest = set(n1_parts[1:])
+        n2_rest = set(n2_parts[1:])
+        if n1_rest & n2_rest:
             return 0.8
     
     # Check if all parts of shorter name are in longer name
@@ -237,11 +296,11 @@ def has_responded(person: dict, resp_emails: set, resp_names: set) -> bool:
         log(f"  ✓ {person['name']} matched by exact name: {person_norm}")
         return True
     
-    # Check fuzzy name match (handles missing middle names, etc.)
+    # Check fuzzy name match (handles missing middle names, first-name-only, typos, etc.)
     if person["name"]:
         for resp_name in resp_names:
             similarity = name_similarity(person["name"], resp_name)
-            if similarity >= 0.8:  # 80% confidence threshold
+            if similarity >= 0.6:  # 60% confidence threshold (allows typos and first-name-only)
                 log(f"  ✓ {person['name']} matched by fuzzy name (similarity: {similarity:.0%}): '{person_norm}' ≈ '{resp_name}'")
                 return True
     
