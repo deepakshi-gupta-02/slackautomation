@@ -171,16 +171,30 @@ def load_responders(args) -> tuple[set, set]:
             n = norm_name(row[name_col])
             if n:
                 names.add(n)
+    
     log(f"Loaded {len(emails)} responder emails / {len(names)} responder names "
         f"from '{args.responses}' (email='{email_col}', name='{name_col}')")
+    
+    # DEBUG: Show some samples
+    if emails:
+        log(f"  Sample responder emails: {list(emails)[:5]}")
+    if names:
+        log(f"  Sample responder names: {list(names)[:5]}")
+    
     return emails, names
 
 
 def has_responded(person: dict, resp_emails: set, resp_names: set) -> bool:
+    # Check email match
     if person["email"] and person["email"] in resp_emails:
+        log(f"  ✓ {person['name']} matched by email: {person['email']}")
         return True
+    # Check name match
     if person["name"] and norm_name(person["name"]) in resp_names:
+        log(f"  ✓ {person['name']} matched by name: {norm_name(person['name'])}")
         return True
+    # No match
+    log(f"  ✗ {person['name']} NOT matched (email: {person['email']}, norm_name: {norm_name(person['name'])})")
     return False
 
 
