@@ -299,11 +299,20 @@ def has_responded(person: dict, resp_emails: set, resp_names: set) -> bool:
     
     # Check fuzzy name match (handles missing middle names, first-name-only, typos, etc.)
     if person["name"]:
+        log(f"  → Checking fuzzy match for '{person_norm}' against {len(resp_names)} responders...")
+        best_match = None
+        best_sim = 0.0
+        
         for resp_name in resp_names:
             similarity = name_similarity(person["name"], resp_name)
+            if similarity > best_sim:
+                best_sim = similarity
+                best_match = resp_name
             if similarity >= 0.6:  # 60% confidence threshold (allows typos and first-name-only)
                 log(f"  ✓ {person['name']} matched by fuzzy name (similarity: {similarity:.0%}): '{person_norm}' ≈ '{resp_name}'")
                 return True
+        
+        log(f"  → Best match was '{best_match}' with {best_sim:.0%} similarity (below 60% threshold)")
     
     # No match
     log(f"  ✗ {person['name']} NOT matched (email: {person['email']}, norm_name: {person_norm})")
